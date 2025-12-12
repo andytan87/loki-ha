@@ -1,0 +1,134 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  annotations:
+    meta.helm.sh/release-name: loki
+    meta.helm.sh/release-namespace: mon-metric-loki
+  generation: 1
+  labels:
+    app.kubernetes.io/component: memcached-results-cache
+    app.kubernetes.io/instance: loki
+    app.kubernetes.io/name: loki
+    app.kubernetes.io/version: 3.5.7
+    name: memcached-results-cache
+  name: loki-results-cache
+  namespace: mon-metric-loki
+spec:
+  persistentVolumeClaimRetentionPolicy:
+    whenDeleted: Retain
+    whenScaled: Retain
+  podManagementPolicy: Parallel
+  replicas: 1
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: memcached-results-cache
+      app.kubernetes.io/instance: loki
+      app.kubernetes.io/name: loki
+      name: memcached-results-cache
+  serviceName: loki-results-cache
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/component: memcached-results-cache
+        app.kubernetes.io/instance: loki
+        app.kubernetes.io/name: loki
+        name: memcached-results-cache
+    spec:
+      containers:
+        - args:
+            - '-m 1024'
+            - '--extended=modern,track_sizes'
+            - '-I 5m'
+            - '-c 16384'
+            - '-v'
+            - '-u 11211'
+          image: memcached:1.6.39-alpine
+          imagePullPolicy: IfNotPresent
+          livenessProbe:
+            failureThreshold: 3
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            successThreshold: 1
+            tcpSocket:
+              port: client
+            timeoutSeconds: 5
+          name: memcached
+          ports:
+            - containerPort: 11211
+              name: client
+              protocol: TCP
+          readinessProbe:
+            failureThreshold: 6
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            successThreshold: 1
+            tcpSocket:
+              port: client
+            timeoutSeconds: 3
+          resources:
+            limits:
+              memory: 1229Mi
+            requests:
+              cpu: 500m
+              memory: 1229Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            readOnlyRootFilesystem: true
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+        - args:
+            - '--memcached.address=localhost:11211'
+            - '--web.listen-address=0.0.0.0:9150'
+          image: prom/memcached-exporter:v0.15.3
+          imagePullPolicy: IfNotPresent
+          livenessProbe:
+            failureThreshold: 3
+            httpGet:
+              path: /metrics
+              port: http-metrics
+              scheme: HTTP
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            successThreshold: 1
+            timeoutSeconds: 5
+          name: exporter
+          ports:
+            - containerPort: 9150
+              name: http-metrics
+              protocol: TCP
+          readinessProbe:
+            failureThreshold: 3
+            httpGet:
+              path: /metrics
+              port: http-metrics
+              scheme: HTTP
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            successThreshold: 1
+            timeoutSeconds: 3
+          resources: {}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            readOnlyRootFilesystem: true
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+      dnsPolicy: ClusterFirst
+      restartPolicy: Always
+      schedulerName: default-scheduler
+      securityContext:
+        fsGroup: 11211
+        runAsGroup: 11211
+        runAsNonRoot: true
+        runAsUser: 11211
+      serviceAccount: loki
+      serviceAccountName: loki
+      terminationGracePeriodSeconds: 60
+  updateStrategy:
+    type: RollingUpdate
